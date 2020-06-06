@@ -1,4 +1,4 @@
-# Semi Supervised Learning with PyTorch Ligntning
+# Semi Supervised Learning with PyTorch Lightning
 
 This project aims to use PyTorch Lightning to implement state-of-the-art algorithms in semi-supervised leanring.
 
