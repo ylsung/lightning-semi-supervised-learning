@@ -5,6 +5,53 @@ import numpy as np
 
 from torch.utils.data import DataLoader, SubsetRandomSampler, Dataset
 
+def get_split_indexes(labels, num_labeled, num_valid, _n_classes):
+    """
+    Split the train data into the following three set:
+    (1) labeled data
+    (2) unlabeled data
+    (3) valid data
+
+    Data distribution of the three sets are same as which of the 
+    original training data.
+    
+    Return:
+        the three indexes for the three sets
+    """
+    # valid_per_class = num_valid // _n_classes
+    valid_indices = []
+    train_indices = []
+
+    num_total = len(labels)
+    num_per_class = []
+    for c in range(_n_classes):
+        num_per_class.append((labels == c).sum().astype(int))
+
+    # obtain valid indices, data evenly drawn from each class
+    for c, num_class in zip(range(_n_classes), num_per_class):
+        valid_this_class = max(num_valid // int(num_total / num_class), 1)
+        class_indices = np.where(labels == c)[0]
+        np.random.shuffle(class_indices)
+        valid_indices.append(class_indices[:valid_this_class])
+        train_indices.append(class_indices[valid_this_class:])
+
+    # split data into labeled and unlabeled
+    labeled_indices = []
+    unlabeled_indices = []
+
+    # num_labeled_per_class = num_labeled // _n_classes
+
+    for c, num_class in zip(range(_n_classes), num_per_class):
+        num_labeled_this_class = max(num_labeled // int(num_total / num_class), 1)
+        labeled_indices.append(train_indices[c][:num_labeled_this_class])
+        unlabeled_indices.append(train_indices[c][num_labeled_this_class:])
+
+    labeled_indices = np.hstack(labeled_indices)
+    unlabeled_indices = np.hstack(unlabeled_indices)
+    valid_indices = np.hstack(valid_indices)
+
+    return labeled_indices, unlabeled_indices, valid_indices
+
 class Subset(Dataset):
     r"""
     Subset of a dataset at specified indices.
@@ -18,6 +65,13 @@ class Subset(Dataset):
         self.indices = indices
         self.transform = transform
 
+        nums = [0 for _ in range(10)]
+        for i in range(len(self.indices)):
+            nums[self.dataset[self.indices[i]][1]] += 1
+
+        print(nums)
+        print(np.sum(nums))
+
     def __getitem__(self, idx):
         data, label = self.dataset[self.indices[idx]]
         if self.transform is not None:
@@ -27,7 +81,7 @@ class Subset(Dataset):
     def __len__(self):
         return len(self.indices)
 
-class CustomDataset(Dataset):
+class CustomSemiDataset(Dataset):
     def __init__(self, datasets):
         self.datasets = datasets
 
@@ -72,17 +126,22 @@ class CustomDataset(Dataset):
         self.map_indexes = [update_indices(m, len(d), self.max_length) 
             for m, d in zip(self.map_indexes, self.datasets)]
 
+        # use same mapping index for all unlabeled dataset for data consistency
+        # the i-th dataset is the labeled data
+        for i in range(1, len(self.map_indexes)):
+            self.map_indexes[i] = self.map_indexes[1]
+
     def __len__(self):
         # will be called every epoch
         self.construct_map_index()
         return self.max_length
 
 class AbstractDataLoader(abc.ABC):
-    def __init__(self, data_root, num_workers, batch_size, num_labeled, valid_percent):
+    def __init__(self, data_root, num_workers, batch_size, num_labeled, num_valid):
         self.data_root = data_root
         self.batch_size = batch_size
         self.num_labeled = num_labeled
-        self.valid_percent = valid_percent
+        self.num_valid = num_valid
 
         self.train_transform = None # TODO, need implement this in your custom datasets
         self.test_transform = None # TODO, need implement this in your custom datasets
@@ -141,7 +200,9 @@ class AbstractDataLoader(abc.ABC):
         return DataLoader(self.train_set,
                           batch_size=self.batch_size, 
                           shuffle=True,
-                          num_workers=self.num_workers)
+                          num_workers=self.num_workers,
+                          pin_memory=True,
+                          drop_last=True)
     
     def get_valid_loader(self):
         # get and process the data first
@@ -151,7 +212,8 @@ class AbstractDataLoader(abc.ABC):
         return DataLoader(self.valid_set,
                           batch_size=self.batch_size, 
                           shuffle=False,
-                          num_workers=self.num_workers)
+                          num_workers=self.num_workers,
+                          pin_memory=True)
 
     def get_test_loader(self):
         # get and process the data first
@@ -160,11 +222,12 @@ class AbstractDataLoader(abc.ABC):
 
         return DataLoader(self.test_set,
                           batch_size=self.batch_size, 
-                          num_workers=self.num_workers)
+                          num_workers=self.num_workers,
+                          pin_memory=True)
 
 class SemiDataLoader(AbstractDataLoader):
-    def __init__(self, data_root, num_workers, batch_size, num_labeled, valid_percent, num_augments):
-        super(SemiDataLoader, self).__init__(data_root, num_workers, batch_size, num_labeled, valid_percent)
+    def __init__(self, data_root, num_workers, batch_size, num_labeled, num_valid, num_augments):
+        super(SemiDataLoader, self).__init__(data_root, num_workers, batch_size, num_labeled, num_valid)
         self.num_augments = num_augments
 
     def _prepare_train_dataset(self):
@@ -174,34 +237,12 @@ class SemiDataLoader(AbstractDataLoader):
 
         indices = np.arange(len(self.train_set))
         ys = np.array([self.train_set[i][1] for i in indices], dtype=np.int64)
-        np.random.shuffle(ys)
+        # np.random.shuffle(ys)
         # get the number of classes
         self._n_classes = len(np.unique(ys))
-        
-        valid_size = int(self.valid_percent * len(self.train_set))
-        valid_per_class = valid_size // self._n_classes
-        valid_indices = []
-        train_indices = []
 
-        # obtain valid indices, data evenly drawn from each class
-        for c in range(self._n_classes):
-            class_indices = np.where(ys == c)[0]
-            valid_indices.append(class_indices[: valid_per_class])
-            train_indices.append(class_indices[valid_per_class:])
-
-        # split data into labeled and unlabeled
-        labeled_indices = []
-        unlabeled_indices = []
-
-        num_labeled_per_class = self.num_labeled // self._n_classes
-
-        for c in range(self._n_classes):
-            labeled_indices.append(train_indices[c][:num_labeled_per_class])
-            unlabeled_indices.append(train_indices[c][num_labeled_per_class:])
-
-        self.labeled_indices = np.hstack(labeled_indices)
-        self.unlabeled_indices = np.hstack(unlabeled_indices)
-        self.valid_indices = np.hstack(valid_indices)
+        self.labeled_indices, self.unlabeled_indices, self.valid_indices = \
+            get_split_indexes(ys, self.num_labeled, self.num_valid, self._n_classes)
 
         self.valid_set = Subset(self.train_set, self.valid_indices, self.test_transform)
 
@@ -212,11 +253,11 @@ class SemiDataLoader(AbstractDataLoader):
 
         train_list.insert(0, Subset(self.train_set, self.labeled_indices, self.train_transform))
 
-        self.train_set = CustomDataset(train_list)
+        self.train_set = CustomSemiDataset(train_list)
 
 class SupervisedDataLoader(AbstractDataLoader):
-    def __init__(self, data_root, num_workers, batch_size, num_labeled, valid_percent):
-        super(SupervisedDataLoader, self).__init__(data_root, num_workers, batch_size, num_labeled, valid_percent)
+    def __init__(self, data_root, num_workers, batch_size, num_labeled, num_valid):
+        super(SupervisedDataLoader, self).__init__(data_root, num_workers, batch_size, num_labeled, num_valid)
 
     def _prepare_train_dataset(self):
         # prepare train and valid dataset, and split the train dataset 
@@ -225,23 +266,13 @@ class SupervisedDataLoader(AbstractDataLoader):
 
         indices = np.arange(len(self.train_set))
         ys = np.array([self.train_set[i][1] for i in indices], dtype=np.int64)
-        np.random.shuffle(ys)
         # get the number of classes
         self._n_classes = len(np.unique(ys))
         
-        valid_size = int(self.valid_percent * len(self.train_set))
-        valid_per_class = valid_size // self._n_classes
-        valid_indices = []
-        train_indices = []
+        self.labeled_indices, self.unlabeled_indices, self.valid_indices = \
+            get_split_indexes(ys, self._n_classes, self.num_valid, self._n_classes)
 
-        # obtain valid indices, data evenly drawn from each class
-        for c in range(self._n_classes):
-            class_indices = np.where(ys == c)[0]
-            valid_indices.append(class_indices[: valid_per_class])
-            train_indices.append(class_indices[valid_per_class:])
-
-        self.labeled_indices = np.hstack(train_indices)
-        self.valid_indices = np.hstack(valid_indices)
+        self.labeled_indices = np.hstack((self.labeled_indices, self.unlabeled_indices))
         self.unlabeled_indices = [] # dummy. only for printing length
 
         self.valid_set = Subset(self.train_set, self.valid_indices, self.test_transform)
@@ -253,9 +284,11 @@ if __name__ == "__main__":
             
     dataset_1 = TensorDataset(torch.arange(2))
     dataset_2 = TensorDataset(torch.arange(3, 8))
+    dataset_3 = TensorDataset(torch.arange(3, 8))
+    dataset_4 = TensorDataset(torch.arange(3, 8))
 
-    dataset = CustomDataset([dataset_1, dataset_2])
-
+    dataset = CustomSemiDataset([dataset_1, dataset_2, dataset_3, dataset_4])
+    
     dataloader = DataLoader(dataset, batch_size=3, shuffle=True)
     print("start epoch")
     for i in range(3):

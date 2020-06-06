@@ -35,6 +35,10 @@ def parser():
         help="what learning scenario to use"
         )
 
+    parser.add_argument("--algo",
+        default="none",
+        help="which algorithm to use")
+
     parser.add_argument("--todo", 
         choices=["train", "test"], 
         default="train",
@@ -79,10 +83,10 @@ def parser():
         default=1000,
         help="number of labeled data")
 
-    parser.add_argument("--valid_percent", 
-        type=float,
-        default=0.1,
-        help="ratio of validation data to the whole data")
+    parser.add_argument("--num_valid", 
+        type=int,
+        default=5000,
+        help="the amount of validation data")
 
     parser.add_argument("--max_epochs", "-m_e", 
         type=int, 
@@ -147,6 +151,16 @@ def parser():
         default=-1,
         help="the hyperparameter for beta distribution in mixup \
             (0 < alpha. If alpha < 0 means no mix)")
+
+    parser.add_argument("--T", 
+        type=float,
+        default=0.5,
+        help="temperature for softmax distribution or sharpen parameter in mixmatch")
+
+    parser.add_argument("--lambda_u",
+        type=float,
+        default=100,
+        help="the weight of the loss for the unlabeled data")
 
     parser.set_defaults(**defaults)
     parser.set_defaults(**vars(args))
