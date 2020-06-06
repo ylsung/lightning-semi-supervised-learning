@@ -17,11 +17,11 @@ Therefore, most of the approaches try to exploit regularization on models to sat
 
 
 ## What is PyTorch Lightning
-Pytorch Lightning is a Pytorch Wrapper to standardize the training and testing process of AI projects. The projects using Pytorch Lightning can focus on the implementation of the algorithm, and there is no need to worry about some complicated engineering parts, such as multi-GPU training, 16-bit precision, Tensorboard logging, and TPU training.
+PyTorch Lightning is a PyTorch Wrapper to standardize the training and testing process of AI projects. The projects using PyTorch Lightning can focus on the implementation of the algorithm, and there is no need to worry about some complicated engineering parts, such as multi-GPU training, 16-bit precision, Tensorboard logging, and TPU training.
 
-In this project, we leverage Pytorch Lightning as the coding backbone and implement algorithms with minimum changes. The necessary implementation of a new algorithm is put in `module`.
+In this project, we leverage PyTorch Lightning as the coding backbone and implement algorithms with minimum changes. The necessary implementation of a new algorithm is put in `module`.
 
-<!--Over the past few years, I usually spent lots of time reading non-core codes of every project. Although it's good to learn better coding logic/styles from other people, I hope I could get the critical points of every implementation faster. Therefore, I become a supporter of Pytorch Lightning and initiate this project with it.-->
+<!--Over the past few years, I usually spent lots of time reading non-core codes of every project. Although it's good to learn better coding logic/styles from other people, I hope I could get the critical points of every implementation faster. Therefore, I become a supporter of PyTorch Lightning and initiate this project with it.-->
 
 ## Results
 
