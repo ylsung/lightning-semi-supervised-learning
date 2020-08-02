@@ -30,7 +30,7 @@ pip install -r requirements.txt
 
 ## Module Flow
 <p align="center">
-  <img width="460" height="300" src="imgs/flow.pdf">
+  <img width="460" height="300" src="imgs/flow.png">
 </p>
 
 * `configs`: Contained the config files for approaches.
