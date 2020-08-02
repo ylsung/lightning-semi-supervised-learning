@@ -1,6 +1,6 @@
 # Semi Supervised Learning with PyTorch Lightning
 
-This project aims to use PyTorch Lightning to implement state-of-the-art algorithms in semi-supervised leanring.
+This project aims to use PyTorch Lightning to implement state-of-the-art algorithms in semi-supervised leanring (SSL).
 
 ## Semi-Supervised Learning
 The semi-supervised learning is to leverage abundant unlabeled samples to improve models under the the scenario of scarce data. There are several assumptions which are usually used in semi-supervised learning,
@@ -9,7 +9,7 @@ The semi-supervised learning is to leverage abundant unlabeled samples to improv
 * Low-density assumption
 * Manifold assumption
 
-Therefore, most of the approaches try to exploit regularization on models to satisfy the assumptions. 
+Most of the approaches try to exploit regularization on models to satisfy the assumptions. In this repository, we will first focus on methods using consistency loss.
 
 <!-- ***State of the art methods:*** <br/>
 [Fixmatch](https://arxiv.org/pdf/2001.07685.pdf) <br/>
@@ -22,6 +22,40 @@ PyTorch Lightning is a PyTorch Wrapper to standardize the training and testing p
 In this project, we leverage PyTorch Lightning as the coding backbone and implement algorithms with minimum changes. The necessary implementation of a new algorithm is put in `module`.
 
 <!--Over the past few years, I usually spent lots of time reading non-core codes of every project. Although it's good to learn better coding logic/styles from other people, I hope I could get the critical points of every implementation faster. Therefore, I become a supporter of PyTorch Lightning and initiate this project with it.-->
+
+## Requirements
+```
+pip install -r requirements.txt
+```
+
+## Module Flow
+<p align="center">
+  <img width="460" height="300" src="imgs/flow.pdf">
+</p>
+
+* `configs`: Contained the config files for approaches.
+* `models`: Contained all the models.
+* `dataloader`: Data loader for every dataset.
+* `module`: SSL modules inherited `pytorch_lightning.LightningModule`.
+
+To implement a new method, one usually need to define new config, data loader and PL module.
+
+## Usage
+
+* Please refer to `argparser.py` for hyperparameters.
+* `read_from_tb.py` is used to extract the final accuracies from `tensorboard` logs. 
+
+### Fully-Supervised Training
+
+```
+python main.py -c config_mixup.ini -g [GPU ID] --affix [FILE NAME]
+```
+
+### Train for Mixmatch
+
+```
+python main.py -c config_mixmatch.ini -g [GPU ID] --num_labeled [NUMBER OF UNLABELED DATA] --affix [FILE NAME]
+```
 
 ## Results
 
