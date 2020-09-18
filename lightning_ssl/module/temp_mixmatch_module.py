@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
 from torchvision import transforms
 import pytorch_lightning as pl
-from .torch_utils import half_mixup_data, soft_cross_entropy, l2_distribution_loss, \
+from torch_utils import half_mixup_data, soft_cross_entropy, l2_distribution_loss, \
     smooth_label, customized_weight_decay, interleave
 
 from .classifier_module import ClassifierModule 
