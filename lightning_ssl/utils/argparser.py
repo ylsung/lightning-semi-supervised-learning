@@ -45,7 +45,7 @@ def parser():
         help="what behavior want to do: train | test")
 
     parser.add_argument("--data_root", 
-        default="/work/ntubiggg1/dataset", 
+        default=".", 
         help="the directory to save the dataset")
 
     parser.add_argument("--log_root", 

@@ -1,12 +1,13 @@
 import os
 import torch
 import numpy as np
-from argparser import parser, print_args
-from module import ClassifierModule, MixmatchModule
-from dataloader import SemiCIFAR10Loader, SupervisedCIFAR10Loader
-from models import WideResNet
+from lightning_ssl.module import ClassifierModule, MixmatchModule
+from lightning_ssl.dataloader import SemiCIFAR10Loader, SupervisedCIFAR10Loader
+from lightning_ssl.models import WideResNet
 import pytorch_lightning as pl
-from utils import count_parameters
+from lightning_ssl.utils import count_parameters
+from lightning_ssl.utils.argparser import parser, print_args
+
 
 # class Trainer:
 #     def __init__(self, tr_loaders, va_loader, te_loader):
@@ -26,7 +27,7 @@ if __name__ == '__main__':
 
     # gpus = 1 if len(args.gpus) == 1 else args.gpus
 
-    gpus = args.gpus
+    gpus = args.gpus if torch.cuda.is_available() else None
 
     # print(os.environ["CUDA_VISIBLE_DEVICES"])
 

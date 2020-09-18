@@ -48,13 +48,13 @@ To implement a new method, one usually need to define new config, data loader an
 ### Fully-Supervised Training
 
 ```
-python main.py -c config_mixup.ini -g [GPU ID] --affix [FILE NAME]
+python main.py -c configs/config_mixup.ini -g [GPU ID] --affix [FILE NAME]
 ```
 
 ### Train for Mixmatch
 
 ```
-python main.py -c config_mixmatch.ini -g [GPU ID] --num_labeled [NUMBER OF UNLABELED DATA] --affix [FILE NAME]
+python main.py -c configs/config_mixmatch.ini -g [GPU ID] --num_labeled [NUMBER OF UNLABELED DATA] --affix [FILE NAME]
 ```
 
 ## Results
