@@ -49,7 +49,7 @@ def parser():
         help="the directory to save the dataset")
 
     parser.add_argument("--log_root", 
-        default="log", 
+        default=".", 
         help="the directory to save the logs or other imformations (e.g. images)")
 
     parser.add_argument("--model_root", 
@@ -83,7 +83,7 @@ def parser():
         default=1000,
         help="number of labeled data")
 
-    parser.add_argument("--num_valid", 
+    parser.add_argument("--num_val", 
         type=int,
         default=5000,
         help="the amount of validation data")
@@ -161,6 +161,11 @@ def parser():
         type=float,
         default=100,
         help="the weight of the loss for the unlabeled data")
+
+    parser.add_argument("--batch_inference",
+        type=bool,
+        default=False,
+        help="whether use batch inference in generating psuedo labels and computing loss") 
 
     parser.set_defaults(**defaults)
     parser.set_defaults(**vars(args))
