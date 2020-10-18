@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 from torch.nn.utils import weight_norm
 
+from .base_model import CustomModel
+
 class GaussianNoise(nn.Module):
     
     def __init__(self, std):
@@ -16,7 +18,7 @@ class GaussianNoise(nn.Module):
         n = torch.normal(zeros_, std=self.std).to(x.device)
         return x + n
 
-class CNN13(nn.Module):
+class CNN13(CustomModel):
     """
     CNN from Mean Teacher paper
     """

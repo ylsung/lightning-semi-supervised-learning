@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .base_model import CustomModel
+
 BIAS = False
 
 class BasicBlock(nn.Module):
@@ -50,7 +52,7 @@ class NetworkBlock(nn.Module):
     def forward(self, x):
         return self.layer(x)
 
-class WideResNet(nn.Module):
+class WideResNet(CustomModel):
     def __init__(self, depth, num_classes, widen_factor=2, dropRate=0.0):
         super(WideResNet, self).__init__()
         nChannels = [16, 16*widen_factor, 32*widen_factor, 64*widen_factor]
