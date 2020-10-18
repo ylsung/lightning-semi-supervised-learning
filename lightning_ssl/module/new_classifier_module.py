@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
 from torchvision import transforms
 import pytorch_lightning as pl
-from .torch_utils import EMA, LabelSmoothingLoss, smooth_label, soft_cross_entropy, \
+from lightning_ssl.utils.torch_utils import EMA, LabelSmoothingLoss, smooth_label, soft_cross_entropy, \
     mixup_data, customized_weight_decay
 
 # Use the style similar to pytorch_lightning (pl)
@@ -103,8 +103,8 @@ class NewClassifierModule(pl.LightningModule):
 
         self.best_dict["val_acc"] = max(self.best_dict["val_acc"], avg_acc.item())
 
-        tensorboard_logs = {"valid/loss": avg_loss, "valid/acc": avg_acc, 
-            "valid/best_acc": self.best_dict["val_acc"]}
+        tensorboard_logs = {"val/loss": avg_loss, "val/acc": avg_acc, 
+            "val/best_acc": self.best_dict["val_acc"]}
 
         return {"val_loss": avg_loss, "val_acc": avg_acc, "log": tensorboard_logs}
 

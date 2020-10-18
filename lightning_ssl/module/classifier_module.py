@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
 from torchvision import transforms
 import pytorch_lightning as pl
-from .torch_utils import EMA, LabelSmoothingLoss, smooth_label, soft_cross_entropy, \
+from lightning_ssl.utils.torch_utils import EMA, LabelSmoothingLoss, smooth_label, soft_cross_entropy, \
     mixup_data, customized_weight_decay, WeightDecayModule, split_weight_decay_weights
 
 # Use the style similar to pytorch_lightning (pl)
@@ -35,9 +35,6 @@ class ClassifierModule(pl.LightningModule):
 
         # to record the best validation accuracy
         self.train_dict["val_acc"].append(0) # avoid empty list
-    
-    def forward(self, x, model):
-        return model(x)
 
     def on_train_start(self):
         # model will put in GPU before this function
@@ -62,7 +59,7 @@ class ClassifierModule(pl.LightningModule):
         y_one_hot = smooth_label(y, self.hparams.n_classes, self.hparams.label_smoothing)
         # mixup
         mixed_x, mixed_y = mixup_data(x, y_one_hot, self.hparams.alpha)
-        y_hat = self.forward(mixed_x, self.classifier)
+        y_hat = self.classifier(mixed_x)
         loss = soft_cross_entropy(y_hat, mixed_y)
         y = torch.argmax(mixed_y, dim=-1)
         acc = self.accuracy(y_hat, y)
@@ -83,7 +80,7 @@ class ClassifierModule(pl.LightningModule):
     def validation_step(self, batch, *args):
         # OPTIONAL
         x, y = batch
-        y_hat = self.forward(x, self.ema_classifier)
+        y_hat = self.ema_classifier(x)
 
         acc = self.accuracy(y_hat, y)
         num = len(y)
@@ -111,9 +108,9 @@ class ClassifierModule(pl.LightningModule):
         self.train_dict["val_acc"][0] = max(self.train_dict["val_acc"][0], avg_acc_list[0].item())
         self.train_dict["test_acc"].append(avg_acc_list[1].item())
 
-        tensorboard_logs = {"valid/loss": avg_loss_list[0], 
-                            "valid/acc": avg_acc_list[0], 
-                            "valid/best_acc": self.train_dict["val_acc"][0],
+        tensorboard_logs = {"val/loss": avg_loss_list[0], 
+                            "val/acc": avg_acc_list[0], 
+                            "val/best_acc": self.train_dict["val_acc"][0],
                             "test/median_acc": np.median(self.train_dict["test_acc"])}
 
         return {"val_loss": avg_loss_list[0], "val_acc": avg_acc_list[0], "log": tensorboard_logs}
@@ -121,7 +118,7 @@ class ClassifierModule(pl.LightningModule):
     def test_step(self, batch, batch_nb):
         # OPTIONAL
         x, y = batch
-        y_hat = self.forward(x, self.ema_classifier)
+        y_hat = self.ema_classifier(x)
         acc = self.accuracy(y_hat, y)
         num = len(y)
 
