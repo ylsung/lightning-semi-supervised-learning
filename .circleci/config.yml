@@ -1,0 +1,30 @@
+version: 2.1
+
+orbs:
+  python: circleci/python@1.0.0
+
+jobs:
+  build-and-test:
+    resource_class: large
+    executor: python/default
+    steps:
+      - checkout
+      # - python/load-cache
+      # - python/install-deps
+      # - python/save-cache
+      - run:
+          name: Installation
+          command: pip install -e .[test]
+      - run:
+          name: Test
+          command: |
+            python -m coverage run --source lightning_ssl -m py.test lightning_ssl tests -v --flake8
+            python -m coverage report -m
+            coverage html
+      - store_artifacts:
+          path: htmlcov
+
+workflows:
+  main:
+    jobs:
+      - build-and-test
