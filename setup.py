@@ -11,5 +11,17 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=["torch==1.7.0", "torchvision", "pytorch-lightning==1.0.2"],
-    extras_require={"test": ["coverage", "pytest", "flake8", "pre-commit"]},
+    extras_require={
+        "test": [
+            "coverage",
+            "pytest",
+            "flake8",
+            "pre-commit",
+            "codecov",
+            "pytest-cov",
+            "pytest-flake8",
+            "flake8-black",
+            "black",
+        ]
+    },
 )
