@@ -2,66 +2,83 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .torch_utils import mixup_data, soft_cross_entropy, l2_distribution_loss
+from lightning_ssl.utils.torch_utils import (
+    half_mixup_data,
+    soft_cross_entropy,
+    l2_distribution_loss,
+    smooth_label,
+    customized_weight_decay,
+    interleave,
+)
 
-def sharpening(label, T):
-    label = label.pow(1 / T)
-    return label / label.sum(-1, keepdim=True)
 
 class Mixmatch:
-    def __init__(self, alpha=0.75, T=0.5, lambda_u=100):
-        self.alpha = alpha
-        self.T = T
-        self.lambda_u = lambda_u
+    classifier: nn.Module
+    hparams: ...
+    lambda_u: float
 
-    def loss(self, model, labeled_x, labeled_y, unlabeled_xs):
+    def _loss(self, labeled_x, labeled_y, unlabeled_xs, batch_inference=False):
         """
         labeled_x: [B, :]
         labeled_y: [B, n_classes]
         unlabeled_xs: K unlabeled_x
         """
-        
-        # size [B, n_classes]
-        p_label = self.psuedo_label(model, unlabeled_xs)
-        
-        B = labeled_x.shape[0]
-        K = len(unlabeled_xs)
-        # size [(K + 1) * B, :]
-        concat_x = torch.cat([labeled_x] + unlabeled_xs, dim=0)
-        concat_y = torch.cat(
-            [labeled_y, p_label.repeat(K, 1)],
-            dim=0
+        batch_size = labeled_x.size(0)
+        num_augmentation = len(unlabeled_xs)  # num_augmentation
+
+        # not to update the running mean and variance in BN
+        self.classifier.freeze_running_stats()
+
+        p_unlabeled_y = self.classifier.psuedo_label(
+            unlabeled_xs, self.hparams.T, batch_inference
         )
 
-        mixed_x, mixed_y = mixup_data(concat_x, concat_y, self.alpha)
+        # # size [(K + 1) * B, :]
+        # all_inputs = torch.cat([labeled_x] + unlabeled_xs, dim=0)
+        # all_targets = torch.cat(
+        #     [labeled_y, p_unlabeled_y.repeat(K, 1)],
+        #     dim=0
+        # )
 
-        y_hat = model(mixed_x)
+        # mixed_input, mixed_target = half_mixup_data(all_inputs, all_targets, self.hparams.alpha)
 
-        l_l = soft_cross_entropy(y_hat[:B], concat_y[:B])
-        l_u = l2_distribution_loss(y_hat[B:], concat_y[B:])
+        # logits = self.forward(mixed_input, self.classifier)
 
-        return {"loss": l_l + self.lambda_u * l_u,
-                "labeled_loss": l_l,
-                "unlabeled_loss": l_u}
-        
-    @torch.no_grad()
-    def psuedo_label(self, model, unlabeled_xs):
-        "unlabeled_xs is list of unlabeled data"
-        p_labels = [F.softmax(model(x), dim=-1) for x in unlabeled_xs]
-        # print(p_labels)
-        p_label = torch.stack(p_labels).mean(0).detach()
-        return sharpening(p_label, self.T)
+        # l_l = soft_cross_entropy(logits[:batch_size], mixed_target[:batch_size])
+        # l_u = l2_distribution_loss(logits[batch_size:], mixed_target[batch_size:])
 
-if __name__ == "__main__":
-    from .torch_utils import smooth_label
+        all_inputs = torch.cat([labeled_x] + unlabeled_xs, dim=0)
+        all_targets = torch.cat(
+            [labeled_y, p_unlabeled_y.repeat(num_augmentation, 1)], dim=0
+        )
 
-    n_classes = 4
-    a = torch.randn(3, 3)
-    y = torch.LongTensor([0, 1, 2])
-    y = smooth_label(y, n_classes, 0)
-    a_list = [torch.randn(3, 3) for _ in range(6)]
-    m = nn.Linear(3, n_classes)
+        mixed_input, mixed_target = half_mixup_data(
+            all_inputs, all_targets, self.hparams.alpha
+        )
 
-    mixmatch = Mixmatch()
+        if batch_inference:
+            self.classifier.recover_running_stats()
+            logits = self.classifier(mixed_input)
+        else:
+            # interleave labeled and unlabed samples between batches to get correct batchnorm calculation
+            mixed_input = list(torch.split(mixed_input, batch_size))
+            mixed_input = interleave(mixed_input, batch_size)
 
-    print(mixmatch.loss(m, a, y, a_list))
+            logits_other = [self.classifier(x) for x in mixed_input[1:]]
+
+            self.classifier.recover_running_stats()
+
+            # only update the BN stats for the first batch
+            logits_first = self.classifier(mixed_input[0])
+
+            logits = [logits_first] + logits_other
+
+            # put interleaved samples back
+            logits = interleave(logits, batch_size)
+
+            logits = torch.cat(logits, dim=0)
+
+        l_l = soft_cross_entropy(logits[:batch_size], mixed_target[:batch_size])
+        l_u = l2_distribution_loss(logits[batch_size:], mixed_target[batch_size:])
+
+        return l_l + self.lambda_u * l_u, l_l, l_u

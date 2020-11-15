@@ -1,1 +1,4 @@
-from .cifar10 import SemiCIFAR10Loader, SupervisedCIFAR10Loader
+from .cifar10 import (
+    SemiCIFAR10Module,
+    SupervisedCIFAR10Module,
+)
