@@ -5,7 +5,7 @@ orbs:
 
 jobs:
   build-and-test:
-    resource_class: large
+    resource_class: medium
     executor: python/default
     steps:
       - checkout
