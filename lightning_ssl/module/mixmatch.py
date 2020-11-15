@@ -2,12 +2,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from lightning_ssl.utils.torch_utils import half_mixup_data, soft_cross_entropy, l2_distribution_loss, \
-    smooth_label, customized_weight_decay, interleave
+from lightning_ssl.utils.torch_utils import (
+    half_mixup_data,
+    soft_cross_entropy,
+    l2_distribution_loss,
+    smooth_label,
+    customized_weight_decay,
+    interleave,
+)
 
-def sharpening(label, T):
-    label = label.pow(1 / T)
-    return label / label.sum(-1, keepdim=True)
 
 class Mixmatch:
     classifier: nn.Module
@@ -21,12 +24,14 @@ class Mixmatch:
         unlabeled_xs: K unlabeled_x
         """
         batch_size = labeled_x.size(0)
-        num_augmentation = len(unlabeled_xs) # num_augmentation
+        num_augmentation = len(unlabeled_xs)  # num_augmentation
 
         # not to update the running mean and variance in BN
         self.classifier.freeze_running_stats()
 
-        p_unlabeled_y = self.classifier.psuedo_label(unlabeled_xs, self.hparams.T, batch_inference)
+        p_unlabeled_y = self.classifier.psuedo_label(
+            unlabeled_xs, self.hparams.T, batch_inference
+        )
 
         # # size [(K + 1) * B, :]
         # all_inputs = torch.cat([labeled_x] + unlabeled_xs, dim=0)
@@ -44,17 +49,18 @@ class Mixmatch:
 
         all_inputs = torch.cat([labeled_x] + unlabeled_xs, dim=0)
         all_targets = torch.cat(
-            [labeled_y, p_unlabeled_y.repeat(num_augmentation, 1)],
-            dim=0
+            [labeled_y, p_unlabeled_y.repeat(num_augmentation, 1)], dim=0
         )
 
-        mixed_input, mixed_target = half_mixup_data(all_inputs, all_targets, self.hparams.alpha)
+        mixed_input, mixed_target = half_mixup_data(
+            all_inputs, all_targets, self.hparams.alpha
+        )
 
         if batch_inference:
             self.classifier.recover_running_stats()
             logits = self.classifier(mixed_input)
         else:
-            # interleave labeled and unlabed samples between batches to get correct batchnorm calculation 
+            # interleave labeled and unlabed samples between batches to get correct batchnorm calculation
             mixed_input = list(torch.split(mixed_input, batch_size))
             mixed_input = interleave(mixed_input, batch_size)
 
