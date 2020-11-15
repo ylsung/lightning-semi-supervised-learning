@@ -1,0 +1,8 @@
+cifar10:
+  algo: "mixmatch"
+  learning_scenario: learning_scenario
+  batch_size: 10
+  num_workers: 0
+  log_root: "tests"
+  num_labeled: 10
+  num_val: 30
