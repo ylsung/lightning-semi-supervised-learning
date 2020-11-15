@@ -1,28 +1,29 @@
-# The code is borrowed from 
+# The code is borrowed from
 # https://github.com/benathi/fastswa-semi-sup/blob/master/mean_teacher/architectures.py
 
 import torch
 import torch.nn as nn
 from torch.nn.utils import weight_norm
 
-from .base_model import CustomModel
+from lightning_ssl.models.base_model import CustomModel
+
 
 class GaussianNoise(nn.Module):
-    
     def __init__(self, std):
         super(GaussianNoise, self).__init__()
         self.std = std
-    
+
     def forward(self, x):
         zeros_ = torch.zeros(x.size()).to(x.device)
         n = torch.normal(zeros_, std=self.std).to(x.device)
         return x + n
 
+
 class CNN13(CustomModel):
     """
     CNN from Mean Teacher paper
     """
-    
+
     def __init__(self, num_classes=10):
         super(CNN13, self).__init__()
 
@@ -35,8 +36,8 @@ class CNN13(CustomModel):
         self.conv1c = weight_norm(nn.Conv2d(128, 128, 3, padding=1))
         self.bn1c = nn.BatchNorm2d(128)
         self.mp1 = nn.MaxPool2d(2, stride=2, padding=0)
-        self.drop1  = nn.Dropout(0.5)
-        
+        self.drop1 = nn.Dropout(0.5)
+
         self.conv2a = weight_norm(nn.Conv2d(128, 256, 3, padding=1))
         self.bn2a = nn.BatchNorm2d(256)
         self.conv2b = weight_norm(nn.Conv2d(256, 256, 3, padding=1))
@@ -44,8 +45,8 @@ class CNN13(CustomModel):
         self.conv2c = weight_norm(nn.Conv2d(256, 256, 3, padding=1))
         self.bn2c = nn.BatchNorm2d(256)
         self.mp2 = nn.MaxPool2d(2, stride=2, padding=0)
-        self.drop2  = nn.Dropout(0.5)
-        
+        self.drop2 = nn.Dropout(0.5)
+
         self.conv3a = weight_norm(nn.Conv2d(256, 512, 3, padding=0))
         self.bn3a = nn.BatchNorm2d(512)
         self.conv3b = weight_norm(nn.Conv2d(512, 256, 1, padding=0))
@@ -53,28 +54,27 @@ class CNN13(CustomModel):
         self.conv3c = weight_norm(nn.Conv2d(256, 128, 1, padding=0))
         self.bn3c = nn.BatchNorm2d(128)
         self.ap3 = nn.AvgPool2d(6, stride=2, padding=0)
-        
-        self.fc1 =  weight_norm(nn.Linear(128, num_classes))
-        self.fc2 =  weight_norm(nn.Linear(128, num_classes))
-    
+
+        self.fc1 = weight_norm(nn.Linear(128, num_classes))
+
     def forward(self, x, debug=False):
         x = self.activation(self.bn1a(self.conv1a(x)))
         x = self.activation(self.bn1b(self.conv1b(x)))
         x = self.activation(self.bn1c(self.conv1c(x)))
         x = self.mp1(x)
         x = self.drop1(x)
-        
+
         x = self.activation(self.bn2a(self.conv2a(x)))
         x = self.activation(self.bn2b(self.conv2b(x)))
         x = self.activation(self.bn2c(self.conv2c(x)))
         x = self.mp2(x)
         x = self.drop2(x)
-        
+
         x = self.activation(self.bn3a(self.conv3a(x)))
         x = self.activation(self.bn3b(self.conv3b(x)))
         x = self.activation(self.bn3c(self.conv3c(x)))
         x = self.ap3(x)
- 
+
         x = x.view(-1, 128)
-        
-        return self.fc1(x), self.fc2(x)
+
+        return self.fc1(x)

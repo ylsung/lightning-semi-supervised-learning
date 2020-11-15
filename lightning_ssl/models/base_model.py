@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 from lightning_ssl.utils.torch_utils import sharpening
 
+
 class CustomModel(nn.Module):
     def __init__(self):
         super(CustomModel, self).__init__()
@@ -14,10 +15,10 @@ class CustomModel(nn.Module):
         """
         Generate the pseudo labels for given unlabeled_xs.
         Args
-            unlabeled_xs: list of unlabeled data (torch.FloatTensor), 
+            unlabeled_xs: list of unlabeled data (torch.FloatTensor),
                           e.g. [unlabeled_data_1, unlabeled_data_2, ..., unlabeled_data_n]
-                          Note that i th element in those unlabeled data should has same 
-                          semantic meaning (come from different data augmentations).  
+                          Note that i th element in those unlabeled data should has same
+                          semantic meaning (come from different data augmentations).
             temperature: the temperature parameter in softmax
         """
         if batch_inference:
@@ -37,17 +38,17 @@ class CustomModel(nn.Module):
         original_momentums = []
         batchnorms = []
         for module in self.modules():
-            if any(isinstance(module, b) for b in [nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d]):
+            if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
                 original_momentums.append(module.momentum)
                 batchnorms.append(module)
-                
+
         return batchnorms, original_momentums
 
     def extract_running_stats(self):
         # Extract the running stats of batchnorms
         running_stats = []
         for module in self.modules():
-            if any(isinstance(module, b) for b in [nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d]):
+            if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
                 running_stats.append([module.running_mean, module.running_var])
 
         return running_stats
@@ -67,5 +68,3 @@ class CustomModel(nn.Module):
             return
         for module, momentum in zip(self.batchnorms, self.momentums):
             module.momentum = momentum
-
-    

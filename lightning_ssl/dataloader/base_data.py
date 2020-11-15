@@ -1,10 +1,13 @@
 import abc
+import math
 import torch
 import random
 import itertools
 import numpy as np
 
 from torch.utils.data import DataLoader, SubsetRandomSampler, Dataset
+import pytorch_lightning as pl
+
 
 def get_split_indices(labels, num_labeled, num_val, _n_classes):
     """
@@ -13,16 +16,16 @@ def get_split_indices(labels, num_labeled, num_val, _n_classes):
     (2) unlabeled data
     (3) val data
 
-    Data distribution of the three sets are same as which of the 
+    Data distribution of the three sets are same as which of the
     original training data.
 
-    Inputs: 
+    Inputs:
         labels: (np.int) array of labels
         num_labeled: (int)
         num_val: (int)
         _n_classes: (int)
 
-    
+
     Return:
         the three indices for the three sets
     """
@@ -60,6 +63,7 @@ def get_split_indices(labels, num_labeled, num_val, _n_classes):
 
     return labeled_indices, unlabeled_indices, val_indices
 
+
 class Subset(Dataset):
     r"""
     Subset of a dataset at specified indices.
@@ -68,6 +72,7 @@ class Subset(Dataset):
         dataset (Dataset): The whole Dataset
         indices (sequence): Indices in the whole set selected for subset
     """
+
     def __init__(self, dataset, indices, transform=None):
         self.dataset = dataset
         self.indices = indices
@@ -89,17 +94,21 @@ class Subset(Dataset):
     def __len__(self):
         return len(self.indices)
 
+
 class MultiDataset(Dataset):
     """
-    MultiDataset is used for training multiple datasets together. The lengths of the datasets 
+    MultiDataset is used for training multiple datasets together. The lengths of the datasets
     should be the same.
     """
+
     def __init__(self, datasets):
         super(MultiDataset, self).__init__()
         assert len(datasets) > 1, "You should use at least two datasets"
 
         for d in datasets[1:]:
-            assert len(d) == len(datasets[0]), "The lengths of the datasets should be the same."
+            assert len(d) == len(
+                datasets[0]
+            ), "The lengths of the datasets should be the same."
 
         self.datasets = datasets
         self.max_length = max([len(d) for d in self.datasets])
@@ -110,21 +119,16 @@ class MultiDataset(Dataset):
     def __len__(self):
         return self.max_length
 
-def get_len(d):
-    if isinstance(d, dict):
-        v = max(d.items(), key=lambda x: len(x[1]))
-        return len(v[1])
-    else:
-        return len(d)
 
 class MagicClass(object):
     """
     Codes are borrowed from https://github.com/PyTorchLightning/pytorch-lightning/pull/1959
     """
+
     def __init__(self, data) -> None:
         self.d = data
         self.l = max([len(d) for d in self.d])
- 
+
     def __len__(self) -> int:
         return self.l
 
@@ -141,7 +145,7 @@ class MagicClass(object):
                 for k, v in enumerate(self.d):
                     # If reaching the end of the iterator, recreate one
                     # because shuffle=True in dataloader, the iter will return a different order
-                    if i % len(v) == 0: 
+                    if i % len(v) == 0:
                         gen[k] = iter(v)
                     rv[k] = next(gen[k])
 
@@ -153,6 +157,7 @@ class MagicClass(object):
                 batch = next(gen)
                 yield batch
 
+
 class CustomSemiDataset(Dataset):
     def __init__(self, datasets):
         self.datasets = datasets
@@ -160,12 +165,6 @@ class CustomSemiDataset(Dataset):
         self.map_indices = [[] for _ in self.datasets]
         self.min_length = min(len(d) for d in self.datasets)
         self.max_length = max(len(d) for d in self.datasets)
-
-        self.map_indices = self.construct_map_index()
-        # use same mapping index for all unlabeled dataset for data consistency
-        # the i-th dataset is the labeled data
-        for i in range(1, len(self.map_indices)):
-            self.map_indices[i] = self.map_indices[1]
 
     def __getitem__(self, i):
         # return tuple(d[i] for d in self.datasets)
@@ -179,55 +178,61 @@ class CustomSemiDataset(Dataset):
         the map_index is use to map the parameter "index" in __getitem__ to a valid index of each dataset.
         Because of the dataset has different length, we should maintain different indices for them.
         """
-        print("called")
+
         def update_indices(original_indices, data_length, max_data_length):
             # update the sampling indices for this dataset
 
             # return: a list, which maps the range(max_data_length) to the val index in the dataset
-            
-            original_indices = original_indices[max_data_length:] # remove used indices
+
+            original_indices = original_indices[max_data_length:]  # remove used indices
             fill_num = max_data_length - len(original_indices)
-            batch = fill_num // data_length
-
-            if fill_num % data_length != 0:
-                # to let the fill_num + len(original_indices) greater than max_data_length
-                batch += 1
-
-            # batch = max_len // target_len
-            # residual = max_len % target_len
+            batch = math.ceil(fill_num / data_length)
 
             additional_indices = list(range(data_length)) * batch
             random.shuffle(additional_indices)
 
             original_indices += additional_indices
 
-            # indices = base_indices * batch + random.sample(base_indices, residual)
-
-            assert len(original_indices) >= max_data_length, "the length of matcing indices is too small"
+            assert (
+                len(original_indices) >= max_data_length
+            ), "the length of matcing indices is too small"
 
             return original_indices
 
-        return [update_indices(m, len(d), self.max_length) for m, d in zip(self.map_indices, self.datasets)]
+        # use same mapping index for all unlabeled dataset for data consistency
+        # the i-th dataset is the labeled data
+        self.map_indices = [
+            update_indices(m, len(d), self.max_length)
+            for m, d in zip(self.map_indices, self.datasets)
+        ]
 
+        # use same mapping index for all unlabeled dataset for data consistency
+        # the i-th dataset is the labeled data
+        for i in range(1, len(self.map_indices)):
+            self.map_indices[i] = self.map_indices[1]
 
     def __len__(self):
         # will be called every epoch
         return self.max_length
 
-class AbstractDataLoader(abc.ABC):
-    _n_classes: int
+
+class DataModuleBase(pl.LightningDataModule):
     labeled_indices: ...
     unlabeled_indices: ...
     val_indices: ...
 
-    def __init__(self, data_root, num_workers, batch_size, num_labeled, num_val):
+    def __init__(
+        self, data_root, num_workers, batch_size, num_labeled, num_val, n_classes
+    ):
+        super().__init__()
         self.data_root = data_root
         self.batch_size = batch_size
         self.num_labeled = num_labeled
         self.num_val = num_val
+        self._n_classes = n_classes
 
-        self.train_transform = None # TODO, need implement this in your custom datasets
-        self.test_transform = None # TODO, need implement this in your custom datasets
+        self.train_transform = None  # TODO, need implement this in your custom datasets
+        self.test_transform = None  # TODO, need implement this in your custom datasets
 
         self.train_set = None
         self.val_set = None
@@ -235,16 +240,47 @@ class AbstractDataLoader(abc.ABC):
 
         self.num_workers = num_workers
 
-    @abc.abstractmethod
-    def _prepare_train_dataset(self):
-        # process train dataset
-        return
+    def train_dataloader(self):
+        # get and process the data first
 
-    @abc.abstractmethod
-    def load_dataset(self, *args, **kwargs):
-        # load the dataset
-        return
-    
+        return DataLoader(
+            self.train_set,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            pin_memory=True,
+            drop_last=True,
+        )
+
+    def val_dataloader(self):
+        # return both val and test loader
+
+        val_loader = DataLoader(
+            self.val_set,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=True,
+        )
+
+        test_loader = DataLoader(
+            self.test_set,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            pin_memory=True,
+        )
+
+        return [val_loader, test_loader]
+
+    def test_dataloader(self):
+
+        return DataLoader(
+            self.test_set,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            pin_memory=True,
+        )
+
     @property
     def n_classes(self):
         # self._n_class should be defined in _prepare_train_dataset()
@@ -252,156 +288,166 @@ class AbstractDataLoader(abc.ABC):
 
     @property
     def num_labeled_data(self):
-        assert self.train_set is not None, \
+        assert self.train_set is not None, (
             "Load train data before calling %s" % self.num_labeled_data.__name__
+        )
         return len(self.labeled_indices)
-    
+
     @property
     def num_unlabeled_data(self):
-        assert self.train_set is not None, \
+        assert self.train_set is not None, (
             "Load train data before calling %s" % self.num_unlabeled_data.__name__
+        )
         return len(self.unlabeled_indices)
 
     @property
     def num_val_data(self):
-        assert self.train_set is not None, \
+        assert self.train_set is not None, (
             "Load train data before calling %s" % self.num_val_data.__name__
+        )
         return len(self.val_indices)
 
     @property
     def num_test_data(self):
-        assert self.test_set is not None, \
+        assert self.test_set is not None, (
             "Load test data before calling %s" % self.num_test_data.__name__
+        )
         return len(self.test_set)
 
-    def _prepare_test_dataset(self):
-        self.test_set = self.load_dataset(is_train=False)
-        # Do something if needing the processing. 
-        # ...
-        # ...
 
-    def get_train_loader(self):
-        # get and process the data first
-        if self.train_set is None:
-            self._prepare_train_dataset()
+class SemiDataModule(DataModuleBase):
+    """
+    Data module for semi-supervised tasks. self.prepare_data() is not implemented. For custom dataset,
+    inherit this class and implement self.prepare_data().
+    """
 
-        return DataLoader(self.train_set,
-                          batch_size=self.batch_size, 
-                          shuffle=True,
-                          num_workers=self.num_workers,
-                          pin_memory=True,
-                          drop_last=True)
-    
-    def get_val_loader(self):
-        # get and process the data first
-        if self.val_set is None:
-            self._prepare_train_dataset()
-        
-        return DataLoader(self.val_set,
-                          batch_size=self.batch_size, 
-                          shuffle=False,
-                          num_workers=self.num_workers,
-                          pin_memory=True)
-
-    def get_test_loader(self):
-        # get and process the data first
-        if self.test_set is None:
-            self._prepare_test_dataset()
-
-        return DataLoader(self.test_set,
-                          batch_size=self.batch_size, 
-                          num_workers=self.num_workers,
-                          pin_memory=True)
-
-class SemiDataLoader(AbstractDataLoader):
-    def __init__(self, data_root, num_workers, batch_size, num_labeled, num_val, num_augments):
-        super(SemiDataLoader, self).__init__(data_root, num_workers, batch_size, num_labeled, num_val)
+    def __init__(
+        self,
+        data_root,
+        num_workers,
+        batch_size,
+        num_labeled,
+        num_val,
+        num_augments,
+        n_classes,
+    ):
+        super(SemiDataModule, self).__init__(
+            data_root, num_workers, batch_size, num_labeled, num_val, n_classes
+        )
         self.num_augments = num_augments
 
-    def _prepare_train_dataset(self):
-        # prepare train and val dataset, and split the train dataset 
+    def setup(self):
+        # prepare train and val dataset, and split the train dataset
         # into labeled and unlabeled groups.
-        self.train_set = self.load_dataset(is_train=True)
+        assert (
+            self.train_set is not None
+        ), "Should create self.train_set in self.setup()"
 
         indices = np.arange(len(self.train_set))
         ys = np.array([self.train_set[i][1] for i in indices], dtype=np.int64)
         # np.random.shuffle(ys)
         # get the number of classes
-        self._n_classes = len(np.unique(ys))
+        # self._n_classes = len(np.unique(ys))
 
-        self.labeled_indices, self.unlabeled_indices, self.val_indices = \
-            get_split_indices(ys, self.num_labeled, self.num_val, self._n_classes)
+        (
+            self.labeled_indices,
+            self.unlabeled_indices,
+            self.val_indices,
+        ) = get_split_indices(ys, self.num_labeled, self.num_val, self._n_classes)
 
         self.val_set = Subset(self.train_set, self.val_indices, self.test_transform)
 
-        unlabeled_list = [
-            Subset(self.train_set, self.unlabeled_indices, self.train_transform) \
-                for _ in range(self.num_augments)
+        # unlabeled_list = [
+        #     Subset(self.train_set, self.unlabeled_indices, self.train_transform) \
+        #         for _ in range(self.num_augments)
+        # ]
+
+        # self.unlabeled_set = MultiDataset(unlabeled_list)
+        # self.labeled_set = Subset(self.train_set, self.labeled_indices, self.train_transform)
+
+        train_list = [
+            Subset(self.train_set, self.unlabeled_indices, self.train_transform)
+            for _ in range(self.num_augments)
         ]
 
-        # train_list.insert(0, Subset(self.train_set, self.labeled_indices, self.train_transform))
+        train_list.insert(
+            0, Subset(self.train_set, self.labeled_indices, self.train_transform)
+        )
 
-        # self.train_set = CustomSemiDataset(train_list)
-        self.unlabeled_set = MultiDataset(unlabeled_list)
-        self.labeled_set = Subset(self.train_set, self.labeled_indices, self.train_transform)
+        self.train_set = CustomSemiDataset(train_list)
 
-    def get_train_loader(self):
+    # def train_dataloader(self):
+    #     # get and process the data first
+    #     if self.labeled_set is None:
+    #         self._prepare_train_dataset()
+
+    #     labeled_loader = DataLoader(self.labeled_set,
+    #                                 batch_size=self.batch_size,
+    #                                 shuffle=True,
+    #                                 num_workers=self.num_workers,
+    #                                 pin_memory=True,
+    #                                 drop_last=True)
+
+    #     unlabeled_loader = DataLoader(self.unlabeled_set,
+    #                                 batch_size=self.batch_size,
+    #                                 shuffle=True,
+    #                                 num_workers=self.num_workers,
+    #                                 pin_memory=True,
+    #                                 drop_last=True)
+
+    #     return MagicClass([labeled_loader, unlabeled_loader])
+
+    def train_dataloader(self):
         # get and process the data first
-        if self.labeled_set is None:
-            self._prepare_train_dataset()
-        
-        labeled_loader = DataLoader(self.labeled_set,
-                                    batch_size=self.batch_size, 
-                                    shuffle=True,
-                                    num_workers=self.num_workers,
-                                    pin_memory=True,
-                                    drop_last=True)
 
-        unlabeled_loader = DataLoader(self.unlabeled_set,
-                                    batch_size=self.batch_size, 
-                                    shuffle=True,
-                                    num_workers=self.num_workers,
-                                    pin_memory=True,
-                                    drop_last=True)
-        
-        return MagicClass([labeled_loader, unlabeled_loader])
+        self.train_set.construct_map_index()
 
-class SupervisedDataLoader(AbstractDataLoader):
-    def __init__(self, data_root, num_workers, batch_size, num_labeled, num_val):
-        super(SupervisedDataLoader, self).__init__(data_root, num_workers, batch_size, num_labeled, num_val)
+        print("\ncalled\n")
 
-    def _prepare_train_dataset(self):
+        return DataLoader(
+            self.train_set,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            pin_memory=True,
+            drop_last=True,
+        )
+
+
+class SupervisedDataModule(DataModuleBase):
+    """
+    Data module for supervised tasks. self.prepare_data() is not implemented. For custom dataset,
+    inherit this class and implement self.prepare_data().
+    """
+
+    def __init__(
+        self, data_root, num_workers, batch_size, num_labeled, num_val, n_classes
+    ):
+        super(SupervisedDataModule, self).__init__(
+            data_root, num_workers, batch_size, num_labeled, num_val, n_classes
+        )
+
+    def setup(self):
         # prepare train and val dataset
-        self.train_set = self.load_dataset(is_train=True)
+        assert (
+            self.train_set is not None
+        ), "Should create self.train_set in self.setup()"
 
         indices = np.arange(len(self.train_set))
         ys = np.array([self.train_set[i][1] for i in indices], dtype=np.int64)
         # get the number of classes
-        self._n_classes = len(np.unique(ys))
-        
-        self.labeled_indices, self.unlabeled_indices, self.val_indices = \
-            get_split_indices(ys, self._n_classes, self.num_val, self._n_classes)
+        # self._n_classes = len(np.unique(ys))
+
+        (
+            self.labeled_indices,
+            self.unlabeled_indices,
+            self.val_indices,
+        ) = get_split_indices(ys, self._n_classes, self.num_val, self._n_classes)
 
         self.labeled_indices = np.hstack((self.labeled_indices, self.unlabeled_indices))
-        self.unlabeled_indices = [] # dummy. only for printing length
+        self.unlabeled_indices = []  # dummy. only for printing length
 
         self.val_set = Subset(self.train_set, self.val_indices, self.test_transform)
-        self.train_set = Subset(self.train_set, self.labeled_indices, self.train_transform)
-
-if __name__ == "__main__":
-        
-    from torch.utils.data import TensorDataset
-            
-    dataset_1 = TensorDataset(torch.arange(2))
-    dataset_2 = TensorDataset(torch.arange(3, 8))
-    dataset_3 = TensorDataset(torch.arange(3, 8))
-    dataset_4 = TensorDataset(torch.arange(3, 8))
-
-    dataset = CustomSemiDataset([dataset_1, dataset_2, dataset_3, dataset_4])
-    
-    dataloader = DataLoader(dataset, batch_size=3, shuffle=True)
-    print("start epoch")
-    for i in range(3):
-        for batch in dataloader:
-            print(batch)
-            print("="*5)
+        self.train_set = Subset(
+            self.train_set, self.labeled_indices, self.train_transform
+        )
