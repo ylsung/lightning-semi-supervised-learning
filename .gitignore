@@ -2,5 +2,5 @@
 .vscode
 **/**/__pycache__/
 lightning_semi_supervised_learning.egg-info/
-lightning_logs/
+**/lightning_logs/
 cifar-10*
