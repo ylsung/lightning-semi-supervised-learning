@@ -10,7 +10,7 @@ setup(
     version="master",
     packages=find_packages(),
     include_package_data=True,
-    install_requires=["torch==1.7.0", "torchvision", "pytorch-lightning==1.0.2"],
+    install_requires=["torch==2.2.0", "torchvision", "pytorch-lightning==1.0.2"],
     extras_require={
         "test": [
             "coverage",
